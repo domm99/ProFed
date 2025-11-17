@@ -85,7 +85,7 @@ For questions, issues, or contributions, feel free to reach out:
 
 - **Author**: Davide Domini  
 - **Email**: davide.domini@unibo.it  
-- **GitHub**: [davidedomini](https://github.com/davidedomini)
+- **GitHub**: [domm99](https://github.com/domm99)
 
 You can also open an [issue](https://github.com/davidedomini/ProFed/issues) or submit a pull request on GitHub!
 
