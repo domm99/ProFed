@@ -82,6 +82,7 @@ device_id → local_dataset
 1. [Proximity-based Self-Federated Learning](https://github.com/domm99/PSFL)
 2. [SParSeFuL](https://github.com/domm99/SParSeFuL)
 3. [Baselines implementation](https://github.com/domm99/experiments-2026-pmc-baselines)
+4. [ProFed Startup Experiemnts](https://github.com/domm99/experiments-2025-jors)
 
 ## 📄 License 
 MIT License — feel free to freely use, modify, and distribute.
