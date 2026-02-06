@@ -1,3 +1,15 @@
+## [0.7.4](https://github.com/domm99/ProFed/compare/0.7.3...0.7.4) (2026-02-06)
+
+### Bug Fixes
+
+* fix dirichlet splitting, it was not working when targets were not tensors ([e34c652](https://github.com/domm99/ProFed/commit/e34c652024419a0ab7b63090a1377c00589d3a01))
+
+### General maintenance
+
+* update readme ([03f7aed](https://github.com/domm99/ProFed/commit/03f7aed606b24a94f79dede0c8f346489fafc93d))
+* update readme ([741d176](https://github.com/domm99/ProFed/commit/741d1768d5ed482d6f7dd5e0dbcd1a9a0e1cb7e3))
+* update readme ([c99a3fa](https://github.com/domm99/ProFed/commit/c99a3fab5b5403f77777adfa1b987d89d34831e9))
+
 ## [0.7.3](https://github.com/davidedomini/ProFed/compare/0.7.2...0.7.3) (2025-07-23)
 
 ### Bug Fixes
