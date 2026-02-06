@@ -179,6 +179,8 @@ def __partition_dirichlet(data, areas, seed):
     min_size = 0
     indices = data.indices
     targets = data.dataset.targets
+    if not isinstance(targets, torch.Tensor):
+        targets = torch.tensor(targets)
     N = len(indices)
     class_to_indices = {}
     for index in indices:
