@@ -1,3 +1,19 @@
+## [0.7.5](https://github.com/domm99/ProFed/compare/0.7.4...0.7.5) (2026-03-24)
+
+### Dependency updates
+
+* **deps:** add matplotlib ([3521a1f](https://github.com/domm99/ProFed/commit/3521a1fb90e07f9a3c30130c672df16ccdf0249b))
+
+### Bug Fixes
+
+* better implementation for partitioning ([8507107](https://github.com/domm99/ProFed/commit/85071079f2eb32530602211e2594320c1746b093))
+
+### General maintenance
+
+* add tests ([7282f71](https://github.com/domm99/ProFed/commit/7282f711868dc2f6b81afcfb64a6f487cd9fb6d6))
+* update git ignore ([1ae1d84](https://github.com/domm99/ProFed/commit/1ae1d844352cc5f4610868bc863d0b3bc3f480f2))
+* update readme ([97dc10d](https://github.com/domm99/ProFed/commit/97dc10da6e51948a7638c99df431a7c941b1ec8b))
+
 ## [0.7.4](https://github.com/domm99/ProFed/compare/0.7.3...0.7.4) (2026-02-06)
 
 ### Bug Fixes
