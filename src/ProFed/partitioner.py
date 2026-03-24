@@ -122,7 +122,7 @@ def split_train_validation(dataset: Dataset, train_validation_ratio: float) -> t
     """
     Split a dataset into training and validation subsets.
     """
-    if not 0 < train_validation_ratio < 1:
+    if not 0 < train_validation_ratio <= 1:
         raise ValueError("train_validation_ratio must be between 0 and 1")
 
     dataset_size = len(dataset)
