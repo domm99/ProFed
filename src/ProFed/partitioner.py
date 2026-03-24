@@ -1,90 +1,130 @@
-import math
-import torch
-import random
-import numpy as np
-from datasets import load_dataset
+from __future__ import annotations
+
+from dataclasses import dataclass
 from collections import defaultdict
-from ProFed.UTKFaceDataset import UTKFaceHFDataset
+from typing import Iterable
+
+import numpy as np
+import torch
+from datasets import load_dataset
+from torch.utils.data import Dataset, Subset, random_split
 from torchvision import datasets, transforms
-from torch.utils.data import Subset, Dataset, random_split
 
-__all__ = ['Region', 'Environment', 'download_dataset', 'split_train_validation', 'partition_to_subregions']
+from ProFed.UTKFaceDataset import UTKFaceHFDataset
 
+__all__ = [
+    "PartitionConfig",
+    "Region",
+    "Environment",
+    "download_dataset",
+    "split_train_validation",
+    "partition_to_subregions",
+]
+
+
+@dataclass(frozen=True)
+class PartitionConfig:
+    partitioning_method: str
+    number_of_regions: int
+    seed: int = 0
+    dirichlet_alpha: float = 0.5
+    min_region_size: int = 10
+
+    def normalized_method(self) -> str:
+        return self.partitioning_method.strip().lower()
+
+    def validate(self) -> None:
+        if self.number_of_regions <= 0:
+            raise ValueError("number_of_regions must be greater than 0")
+        if self.dirichlet_alpha <= 0:
+            raise ValueError("dirichlet_alpha must be greater than 0")
+        if self.min_region_size < 0:
+            raise ValueError("min_region_size must be non-negative")
+
+
+@dataclass
 class Region:
-
-    def __init__(self, mid: int, training_data: Subset, validation_data: Subset):
-        self.mid = mid
-        self.training_data = training_data
-        self.validation_data = validation_data
-
+    mid: int
+    training_data: Subset
+    validation_data: Subset
+    seed: int
 
     def distribute_to_devices(self, number_of_devices: int) -> dict[int, tuple[Subset, Subset]]:
-        device_to_subset = dict()
-        training_dataset, training_indices = self.training_data.dataset, self.training_data.indices
-        validation_dataset, validation_indices = self.validation_data.dataset, self.validation_data.indices
-        np.random.shuffle(training_indices)
-        np.random.shuffle(validation_indices)
+        if number_of_devices <= 0:
+            raise ValueError("number_of_devices must be greater than 0")
+
+        training_dataset, training_indices = self.training_data.dataset, np.array(self.training_data.indices, dtype=int)
+        validation_dataset, validation_indices = self.validation_data.dataset, np.array(self.validation_data.indices, dtype=int)
+        rng = np.random.default_rng(self.seed)
+        rng.shuffle(training_indices)
+        rng.shuffle(validation_indices)
+
+        device_to_subset = {}
         training_split = np.array_split(training_indices, number_of_devices)
         validation_split = np.array_split(validation_indices, number_of_devices)
         for index, (training, validation) in enumerate(zip(training_split, validation_split)):
-            device_to_subset[index] = (Subset(training_dataset, training), Subset(validation_dataset, validation))
+            device_to_subset[index] = (
+                Subset(training_dataset, training.tolist()),
+                Subset(validation_dataset, validation.tolist()),
+            )
         return device_to_subset
 
 
 class Environment:
-
     def __init__(self, partitions: dict[int, tuple[Subset, Subset]], seed: int):
-        np.random.seed(seed)
-        self.regions = [Region(id, training_data, validation_data) for id, (training_data, validation_data) in partitions.items()]
+        self.seed = seed
+        self.regions = [
+            Region(region_id, training_data, validation_data, seed + region_id)
+            for region_id, (training_data, validation_data) in sorted(partitions.items())
+        ]
 
-
-    def from_subregion_to_devices(self, region_id: int, number_of_devices: int):
+    def from_subregion_to_devices(self, region_id: int, number_of_devices: int) -> dict[int, tuple[Subset, Subset]]:
         return self.regions[region_id].distribute_to_devices(number_of_devices)
 
 
-def download_dataset(dataset_name: str, transform: transforms.Compose = None, download_path: str = 'dataset') -> tuple[Dataset,Dataset]:
+def download_dataset(
+    dataset_name: str,
+    transform: transforms.Compose | None = None,
+    download_path: str = "dataset",
+) -> tuple[Dataset, Dataset]:
     """
     Download the specified dataset from torchvision.
-    Valid datasets are: MNIST, FashionMNIST, Extended MNIST, CIFAR10, CIFAR100.
-    :param dataset_name: The dataset to be downloaded.
-    :param transform: Transformations that will be applied to the dataset. If none only ToTensor will be applied.
-    :param download_path: The path where the dataset will be downloaded.
-    :return: the specified dataset.
+    Valid datasets are: MNIST, FashionMNIST, EMNIST, CIFAR10, CIFAR100 and UTKFace.
     """
     if transform is None:
         transform = transforms.Compose([transforms.ToTensor()])
 
-    if dataset_name == 'MNIST':
+    if dataset_name == "MNIST":
         train_dataset = datasets.MNIST(root=download_path, train=True, download=True, transform=transform)
         test_dataset = datasets.MNIST(root=download_path, train=False, download=True, transform=transform)
-    elif dataset_name == 'CIFAR10':
+    elif dataset_name == "CIFAR10":
         train_dataset = datasets.CIFAR10(root=download_path, train=True, download=True, transform=transform)
         test_dataset = datasets.CIFAR10(root=download_path, train=False, download=True, transform=transform)
-    elif dataset_name == 'CIFAR100':
+    elif dataset_name == "CIFAR100":
         train_dataset = datasets.CIFAR100(root=download_path, train=True, download=True, transform=transform)
         test_dataset = datasets.CIFAR100(root=download_path, train=False, download=True, transform=transform)
-    elif dataset_name == 'EMNIST':
-        train_dataset = datasets.EMNIST(root=download_path, split='letters', train=True, download=True, transform=transform)
-        test_dataset = datasets.EMNIST(root=download_path, split='letters', train=False, download=True, transform=transform)
-    elif dataset_name == 'FashionMNIST':
+    elif dataset_name == "EMNIST":
+        train_dataset = datasets.EMNIST(root=download_path, split="letters", train=True, download=True, transform=transform)
+        test_dataset = datasets.EMNIST(root=download_path, split="letters", train=False, download=True, transform=transform)
+    elif dataset_name == "FashionMNIST":
         train_dataset = datasets.FashionMNIST(root=download_path, train=True, download=True, transform=transform)
         test_dataset = datasets.FashionMNIST(root=download_path, train=False, download=True, transform=transform)
-    elif dataset_name == 'UTKFace':
+    elif dataset_name == "UTKFace":
         ds = load_dataset("py97/UTKFace-Cropped", split="train")
         dataset = UTKFaceHFDataset(ds, transform=transform)
         train_dataset, test_dataset = split_train_validation(dataset, 0.85)
     else:
-        raise Exception(f'Dataset {dataset_name} not supported! Please check :)')
+        raise ValueError(f"Dataset {dataset_name} not supported")
     return train_dataset, test_dataset
 
 
 def split_train_validation(dataset: Dataset, train_validation_ratio: float) -> tuple[Subset, Subset]:
     """
-    Split a given dataset in training and validation set.
-    :param dataset: The dataset to be split in training and validation subsets.
-    :param train_validation_ratio: The percentage of training instances, it must be a value between 0 and 1.
-    :return: A tuple containing the training and validation subsets.
+    Split a dataset into training and validation subsets.
     """
+    if not 0 < train_validation_ratio < 1:
+        raise ValueError("train_validation_ratio must be between 0 and 1")
+
     dataset_size = len(dataset)
     training_size = int(dataset_size * train_validation_ratio)
     validation_size = dataset_size - training_size
@@ -92,133 +132,168 @@ def split_train_validation(dataset: Dataset, train_validation_ratio: float) -> t
     return training_data, validation_data
 
 
-def partition_to_subregions(training_dataset, validation_dataset, dataset_name, partitioning_method: str, number_of_regions: int, seed: int) -> Environment:
-    """ TODO fix doc
-    Splits a torch Subset following a given method.
-    Implemented methods for label skewness are: IID, Hard, Dirichlet
-    :param partitioning_method: a string containing the name of the partitioning method.
-    :param dataset: a torch Subset containing the dataset to be partitioned.
-    :param areas: the number of sub-areas.
-    :return: a dict in which keys are the IDs of the subareas and the values are lists of IDs of the instances of the subarea
-        (IDs references the original dataset).
+def partition_to_subregions(
+    training_dataset: Subset,
+    validation_dataset: Subset,
+    dataset_name: str,
+    partitioning_method: str,
+    number_of_regions: int,
+    seed: int,
+    dirichlet_alpha: float = 0.5,
+    min_region_size: int = 10,
+) -> Environment:
     """
-    if partitioning_method == 'Dirichlet':
-        if dataset_name == 'UTKFace':
-            raise Exception('Dirichlet partitioning is not implemented for UTKFace')
-        training_partitions = __partition_dirichlet(training_dataset, number_of_regions, seed)
-        validation_partitions = __partition_dirichlet(validation_dataset, number_of_regions, seed)
-    elif partitioning_method == 'Hard':
-        if dataset_name == 'UTKFace':
-            training_partitions = __partition_regression(training_dataset, number_of_regions)
-            validation_partitions = __partition_regression(validation_dataset, number_of_regions)
-        else:
-            training_partitions = __partition_hard(training_dataset, number_of_regions)
-            validation_partitions = __partition_hard(validation_dataset, number_of_regions)
-    elif partitioning_method == 'IID':
-        if dataset_name == 'UTKFace':
-            raise Exception('IID partitioning is not implemented for UTKFace')
-        training_partitions = __partition_iid(training_dataset, number_of_regions)
-        validation_partitions = __partition_iid(validation_dataset, number_of_regions)
-    else:
-        raise Exception(f'Partitioning method {partitioning_method} not supported! Please check :)')
+    Partition train and validation subsets into regions.
 
-    partitions = dict()
-    for k in training_partitions.keys():
-        partitions[k] = (Subset(training_dataset.dataset, training_partitions[k]), Subset(validation_dataset.dataset, validation_partitions[k]))
+    The API keeps backwards compatibility with the original signature while exposing
+    Dirichlet-specific controls through keyword arguments.
+    """
+    config = PartitionConfig(
+        partitioning_method=partitioning_method,
+        number_of_regions=number_of_regions,
+        seed=seed,
+        dirichlet_alpha=dirichlet_alpha,
+        min_region_size=min_region_size,
+    )
+    config.validate()
 
-    return Environment(partitions, seed)
+    training_partitions = _partition_subset(training_dataset, dataset_name, config)
+    validation_partitions = _partition_subset(validation_dataset, dataset_name, config)
 
-
-def __partition_hard(data, areas) -> dict[int, list[int]]:
-    labels = len(data.dataset.classes)
-    labels_set = np.arange(labels)
-    split_classes_per_area = np.array_split(labels_set, areas)
-    distribution = np.zeros((areas, labels))
-    for i, elems in enumerate(split_classes_per_area):
-        rows = [i for _ in elems]
-        distribution[rows, elems] = 1 / len(elems)
-    return __partition_by_distribution(distribution, data, areas)
+    partitions = {
+        region_id: (
+            Subset(training_dataset.dataset, training_partitions[region_id]),
+            Subset(validation_dataset.dataset, validation_partitions[region_id]),
+        )
+        for region_id in range(config.number_of_regions)
+    }
+    return Environment(partitions, config.seed)
 
 
-def __partition_iid(data, areas) -> dict[int, list[int]]:
-    labels = len(data.dataset.classes)
-    percentage = 1 / labels
-    distribution = np.zeros((areas, labels))
-    distribution.fill(percentage)
-    return __partition_by_distribution(distribution, data, areas)
+def _partition_subset(data: Subset, dataset_name: str, config: PartitionConfig) -> dict[int, list[int]]:
+    method = config.normalized_method()
+    if method == "dirichlet":
+        if dataset_name == "UTKFace":
+            raise ValueError("Dirichlet partitioning is not implemented for UTKFace")
+        return _partition_dirichlet(data, config.number_of_regions, config.seed, config.dirichlet_alpha, config.min_region_size)
+    if method == "hard":
+        if dataset_name == "UTKFace":
+            return __partition_regression(data, config.number_of_regions)
+        return _partition_hard(data, config.number_of_regions, config.seed)
+    if method == "iid":
+        if dataset_name == "UTKFace":
+            raise ValueError("IID partitioning is not implemented for UTKFace")
+        return _partition_iid(data, config.number_of_regions, config.seed)
+    raise ValueError(f"Partitioning method {config.partitioning_method} not supported")
 
 
-def __partition_by_distribution(distribution: np.ndarray, data: Subset, areas: int) -> dict[int, list[int]]:
-    indices = data.indices
-    targets = data.dataset.targets
-    if not isinstance(targets, torch.Tensor):
-        targets = torch.tensor(targets)
-    class_counts = torch.bincount(targets[indices])
-    class_to_indices = {}
-    for index in indices:
-        c = targets[index].item()
-        if c in class_to_indices:
-            class_to_indices[c].append(index)
-        else:
-            class_to_indices[c] = [index]
-    max_examples_per_area = int(math.floor(len(indices) / areas))
-    elements_per_class = torch.floor(torch.tensor(distribution) * max_examples_per_area).to(torch.int)
-    partitions = {a: [] for a in range(areas)}
-    for area in range(areas):
-        elements_per_class_in_area = elements_per_class[area, :].tolist()
-        for c in sorted(class_to_indices.keys()):
-            elements = min(elements_per_class_in_area[c], class_counts[c].item())
-            selected_indices = random.sample(class_to_indices[c], elements)
-            partitions[area].extend(selected_indices)
-    return partitions
+def _partition_hard(data: Subset, areas: int, seed: int) -> dict[int, list[int]]:
+    labels = _label_count(data)
+    label_groups = np.array_split(np.arange(labels), areas)
+    class_to_indices = _group_indices_by_class(data, seed)
+    partitions = {area: [] for area in range(areas)}
+    for area, group in enumerate(label_groups):
+        for label in group:
+            partitions[area].extend(class_to_indices.get(int(label), []))
+    return _shuffle_partitions(partitions, seed)
 
 
-def __partition_dirichlet(data, areas, seed):
-    # Implemented as in: https://proceedings.mlr.press/v97/yurochkin19a.html
-    np.random.seed(seed)
-    min_size = 0
-    indices = data.indices
-    targets = data.dataset.targets
-    if not isinstance(targets, torch.Tensor):
-        targets = torch.tensor(targets)
-    N = len(indices)
-    class_to_indices = {}
-    for index in indices:
-        c = targets[index].item()
-        if c in class_to_indices:
-            class_to_indices[c].append(index)
-        else:
-            class_to_indices[c] = [index]
-    partitions = {a: [] for a in range(areas)}
-    while min_size < 10:
+def _partition_iid(data: Subset, areas: int, seed: int) -> dict[int, list[int]]:
+    class_to_indices = _group_indices_by_class(data, seed)
+    partitions = {area: [] for area in range(areas)}
+    for label_indices in class_to_indices.values():
+        splits = np.array_split(np.array(label_indices, dtype=int), areas)
+        for area, split in enumerate(splits):
+            partitions[area].extend(split.tolist())
+    return _shuffle_partitions(partitions, seed)
+
+
+def _partition_dirichlet(
+    data: Subset,
+    areas: int,
+    seed: int,
+    alpha: float,
+    min_region_size: int,
+) -> dict[int, list[int]]:
+    # Implemented following https://proceedings.mlr.press/v97/yurochkin19a.html
+    rng = np.random.default_rng(seed)
+    indices = list(data.indices)
+    total_instances = len(indices)
+    class_to_indices = _group_indices_by_class(data, seed)
+    partitions = {area: [] for area in range(areas)}
+
+    if not indices:
+        return partitions
+
+    min_size = -1
+    while min_size < min_region_size:
         idx_batch = [[] for _ in range(areas)]
-        for k in sorted(class_to_indices.keys()):
-            idx_k = class_to_indices[k]
-            np.random.shuffle(idx_k)
-            proportions = np.random.dirichlet(np.repeat(0.5, areas))
-            ## Balance
-            proportions = np.array([p * (len(idx_j) < N / areas) for p, idx_j in zip(proportions, idx_batch)])
-            proportions = proportions / proportions.sum()
-            proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
-            idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
-            min_size = min([len(idx_j) for idx_j in idx_batch])
-    for j in range(areas):
-        np.random.shuffle(idx_batch[j])
-        partitions[j] = idx_batch[j]
+        for label in sorted(class_to_indices.keys()):
+            idx_k = np.array(class_to_indices[label], dtype=int)
+            rng.shuffle(idx_k)
+            proportions = rng.dirichlet(np.repeat(alpha, areas))
+            balance_mask = np.array([len(idx_j) < total_instances / areas for idx_j in idx_batch], dtype=float)
+            proportions = proportions * balance_mask
+            if proportions.sum() == 0:
+                proportions = np.repeat(1 / areas, areas)
+            else:
+                proportions = proportions / proportions.sum()
+            split_points = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+            for area, split in enumerate(np.split(idx_k, split_points)):
+                idx_batch[area].extend(split.tolist())
+        min_size = min(len(idx_j) for idx_j in idx_batch)
+
+    for area in range(areas):
+        rng.shuffle(idx_batch[area])
+        partitions[area] = idx_batch[area]
     return partitions
 
-def find_bounds(data) -> tuple[float, float]:
-  ys = []
-  for _, y in data:
-      ys.append(y.item())
 
-  lower = min(ys)
-  upper = max(ys)
-  return lower, upper
+def _targets_tensor(dataset: Dataset) -> torch.Tensor:
+    if not hasattr(dataset, "targets"):
+        raise ValueError("The provided dataset does not expose a 'targets' attribute")
+    targets = dataset.targets
+    if isinstance(targets, torch.Tensor):
+        return targets
+    return torch.tensor(targets)
 
-def __partition_regression(data, areas) -> dict[int, list[int]]:
+
+def _group_indices_by_class(data: Subset, seed: int) -> dict[int, list[int]]:
+    targets = _targets_tensor(data.dataset)
+    rng = np.random.default_rng(seed)
+    class_to_indices: dict[int, list[int]] = defaultdict(list)
+    for index in data.indices:
+        class_to_indices[int(targets[index].item())].append(int(index))
+    for label_indices in class_to_indices.values():
+        rng.shuffle(label_indices)
+    return dict(class_to_indices)
+
+
+def _label_count(data: Subset) -> int:
+    dataset = data.dataset
+    if hasattr(dataset, "classes"):
+        return len(dataset.classes)
+    targets = _targets_tensor(dataset)
+    return int(targets.max().item()) + 1
+
+
+def _shuffle_partitions(partitions: dict[int, list[int]], seed: int) -> dict[int, list[int]]:
+    rng = np.random.default_rng(seed)
+    for indices in partitions.values():
+        rng.shuffle(indices)
+    return partitions
+
+
+def find_bounds(data: Iterable[tuple[torch.Tensor, torch.Tensor]]) -> tuple[float, float]:
+    ys = []
+    for _, y in data:
+        ys.append(y.item())
+    return min(ys), max(ys)
+
+
+def __partition_regression(data: Subset, areas: int) -> dict[int, list[int]]:
     lower_bound, upper_bound = find_bounds(data)
-    bins = np.linspace(lower_bound, upper_bound, areas+1)
+    bins = np.linspace(lower_bound, upper_bound, areas + 1)
     ys = []
     indices = []
     for idx in range(len(data)):
@@ -228,8 +303,7 @@ def __partition_regression(data, areas) -> dict[int, list[int]]:
     ys = np.array(ys)
     bin_indices = np.digitize(ys, bins, right=True)
     bin_indices = np.clip(bin_indices, 1, len(bins) - 1)
-    mapping = defaultdict(list)
-    for idx, b in enumerate(bin_indices):
-        mapping[int(b)].append(indices[idx])
-
-    return mapping
+    mapping: dict[int, list[int]] = defaultdict(list)
+    for idx, bin_id in enumerate(bin_indices):
+        mapping[int(bin_id) - 1].append(indices[idx])
+    return {area: mapping.get(area, []) for area in range(areas)}
