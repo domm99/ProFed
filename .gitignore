@@ -1,2 +1,7 @@
 .idea/
 node_modules/
+**/__pycache__
+.venv/
+dataset
+**.pdf
+**debug**
