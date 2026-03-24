@@ -30,6 +30,7 @@ torchvision = "^0.22.0"
 datasets = "3.6.0"
 fsspec = "2025.3.0"
 tensorflow-datasets = "4.9.9"
+matplotlib = "^3.10.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
