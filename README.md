@@ -18,7 +18,7 @@ ProFed is a framework for evaluating federated learning (FL) systems under *real
 
 ### Prerequisites
 
-- Python ≥ 3.12
+- Python ≥ 3.12
 
 ### Installation
 
@@ -45,17 +45,37 @@ train_data, validation_data = split_train_validation(train_data, 0.8)
 environment = partition_to_subregions(
     train_data,
     validation_data,
+    dataset_name = 'EMNIST',
     partitioning_method = 'Hard',
-    number_subregions = 5,
-    seed = 42
+    number_of_regions = 5,
+    seed = 42,
 )
 ```
 
 - method: partition strategy ('Hard', 'Dirichlet', or 'IID')
 
-- number_subregions: how many simulated geographic clusters
+- number_of_regions: how many simulated geographic clusters
+
+- dirichlet_alpha: optional, controls how concentrated the Dirichlet splits are
+
+- min_region_size: optional, retries Dirichlet sampling until each region has at least this many samples
 
 - Returns an Environment object. Each region within it contains IID data internally, but non-IID across regions.
+
+Example for Dirichlet:
+
+```python
+environment = partition_to_subregions(
+    train_data,
+    validation_data,
+    dataset_name = 'CIFAR100',
+    partitioning_method = 'Dirichlet',
+    number_of_regions = 8,
+    seed = 42,
+    dirichlet_alpha = 0.3,
+    min_region_size = 20,
+)
+```
 
 ### 1. Distributing region data across devices
 ```python
@@ -95,4 +115,3 @@ For questions, issues, or contributions, feel free to reach out:
 - **GitHub**: [domm99](https://github.com/domm99)
 
 You can also open an [issue](https://github.com/davidedomini/ProFed/issues) or submit a pull request on GitHub!
-
