@@ -1,3 +1,9 @@
+## [0.7.6](https://github.com/domm99/ProFed/compare/0.7.5...0.7.6) (2026-03-24)
+
+### Bug Fixes
+
+* fix train-val split range ([99f8da9](https://github.com/domm99/ProFed/commit/99f8da929a58e8813f0f2e4fe086731d52e6d2da))
+
 ## [0.7.5](https://github.com/domm99/ProFed/compare/0.7.4...0.7.5) (2026-03-24)
 
 ### Dependency updates
